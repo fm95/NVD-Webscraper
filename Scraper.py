@@ -94,9 +94,6 @@ def new_window(url):
     tab = webdriver.Firefox()
     tab.set_window_size(900, 900)
     tab.get(url)
-
-    ### EXCEPTION ### go haed
-
     scrape_data(tab)
     tab.quit()
 
@@ -105,6 +102,11 @@ def scrape_data(webpage):
     soup = BeautifulSoup(webpage.page_source, 'lxml')
     content = soup.find(id="page-content")
 
+    # Check if the page is loaded correctly
+    if content is None:
+        print("The current CVE webpage is unavailable!")
+        return
+
     ### CVE ID
     h2_tag = content.find("h2")
     name = h2_tag.get_text().replace(' Detail', '')
@@ -112,26 +114,34 @@ def scrape_data(webpage):
     ### Description
     description = content.find("p").get_text()
 
+
     ### Impact
     div_impact = content.find("div", class_="row bs-callout bs-callout-success")
-    impact = div_impact.find("a").get_text()
+    if div_impact is None: 
+        impact = "-"
+    else:
+        impact = div_impact.find("a").get_text()
 
     ### References
     ref_table = content.find("table", class_="table table-striped table-condensed table-bordered detail-table")
-    ref_rows = ref_table.find_all("td")
-    references = ''
-    for i in range(len(ref_rows)):
-        if(i%2 == 0):
-            references += ref_rows[i].get_text() + "\n"
+    if ref_table is None: 
+        references = "None"
+    else:
+        ref_rows = ref_table.find_all("td")
+        references = ''
+        for i in range(len(ref_rows)):
+            if(i%2 == 0):
+                references += ref_rows[i].get_text() + "\n"
 
     ### CWE
     div_cwe = content.find("div", class_="technicalDetails")
-    cwe = div_cwe.find("li").get_text()
+    if div_cwe is None or div_cwe.find("li") is None:
+        cwe = "-"
+    else:
+        cwe = div_cwe.find("li").get_text()
 
     cve = CVE(name, description, impact, references, cwe)
     cve.write_CVE()
-
-    #f.writerow([name, description, impact, references, cwe])
 
 
 #################
@@ -150,6 +160,8 @@ if __name__ == '__main__':
 ### Browse the webpage of each CVE ###
     open_CVE(browser)
     browser.quit()
+
+    print("\n Your CSV has just been successfully created! :)")
 
 
 
