@@ -5,6 +5,7 @@ import sys
 import requests
 import selenium
 import csv
+import json
 import time
 
 from selenium import webdriver
@@ -12,6 +13,11 @@ from selenium.webdriver.common.keys import Keys
 from bs4 import BeautifulSoup
 from selenium.webdriver import Chrome
 from time import sleep
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
+
 
 # Website URL #
 url = "https://nvd.nist.gov/vuln/search"
@@ -21,6 +27,7 @@ class NoResult(Exception): pass
 
 # Class that represent a CVE vulnerability #
 class CVE:
+
     def __init__(self, ID, Description, Impact, References, CWE):
         self.ID = ID
         self.Description = Description
@@ -28,11 +35,45 @@ class CVE:
         self.References = References
         self.CWE = CWE
 
-    def write_CVE(self):
-        f.writerow([self.ID, self.Description, self.Impact, self.References, self.CWE])
-
     def print_CVE(self):
         print(self.ID + " - " + self.Impact + "\n" + self.Description + "\n" + self.CWE + "\n" + self.References)
+
+
+# Class that represent a list of CVEs
+class CVE_list:   
+
+    def __init__(self):
+        self.CVEs = []
+        
+    def add_CVE(self, CVE):
+        self.CVEs.append(CVE)
+
+    def to_CSV(self):
+        f = csv.writer(open('vuln_list.csv', 'w'))
+        f.writerow(['ID', 'Description', 'Impact', 'References', 'CWE'])
+
+        for cve in self.CVEs:
+            f.writerow([cve.ID, cve.Description, cve.Impact,   cve.References, cve.CWE])
+
+    def to_JSON(self):
+        data = {}
+        data['CVEs'] = []
+
+        for cve in self.CVEs:
+            data['CVEs'].append({
+                'ID': cve.ID,
+                'Description': cve.Description,
+                'Impact': cve.Impact,
+                'References': cve.References,
+                'CWE': cve.CWE
+            })
+
+        with open('vuln_list.json', 'w') as outfile:
+            json.dump(data, outfile, indent=2, separators=(',', ': '))
+
+    def print_CVEs(self):
+        for cve in self.CVEs:
+            cve.print_CVE()
 
 
 ### Functions ###
@@ -81,8 +122,20 @@ def new_window(url):
     tab = webdriver.Firefox()
     tab.set_window_size(900, 900)
     tab.get(url)
-    scrape_data(tab)
-    tab.quit()
+    
+    ### Wait Page Loading ###
+    time.sleep(3) # for slow connection, add more time
+
+    try:
+        element = WebDriverWait(tab, 3).until(EC.presence_of_element_located((By.ID, 'body-section')))
+        scrape_data(tab)
+        
+    except TimeoutException:
+        print("Webpage loading took too much time!")
+        
+    finally:
+        tab.quit()
+
 
 # Function that scrape a CVE webpage and write all the data into a CSV file
 def scrape_data(webpage):
@@ -90,20 +143,17 @@ def scrape_data(webpage):
     page = soup.find("div", class_="container")
     content = soup.find(id="page-content")
 
-    ### WAIT FOR WEBPAGE LOADING ###
-    time.sleep(2) # if your connection is slow, add more time
-
-    # Check if the page is loaded correctly
+    # Check if the page is available #
     if  page is None:
         print("The current CVE webpage is unavailable!")
         return
 
     ### CVE ID
     h2_tag = content.find("h2")
-    name = h2_tag.get_text().replace(' Detail', '')
+    name = h2_tag.get_text().replace(' Detail', '').strip()
 
     ### Description
-    description = content.find("p").get_text()
+    description = content.find("p").get_text().strip()
 
 
     ### Impact
@@ -111,7 +161,7 @@ def scrape_data(webpage):
     if div_impact is None: 
         impact = "-"
     else:
-        impact = div_impact.find("a").get_text()
+        impact = div_impact.find("a").get_text().strip()
 
     ### References
     ref_table = content.find("table", class_="table table-striped table-condensed table-bordered detail-table")
@@ -129,10 +179,10 @@ def scrape_data(webpage):
     if div_cwe is None or div_cwe.find("li") is None:
         cwe = "-"
     else:
-        cwe = div_cwe.find("li").get_text()
+        cwe = div_cwe.find("li").get_text().strip()
 
     cve = CVE(name, description, impact, references, cwe)
-    cve.write_CVE()
+    list_cve.add_CVE(cve)
 
 
 ### Main ###
@@ -141,19 +191,21 @@ if __name__ == '__main__':
 
     browser = webdriver.Firefox()
 
-### Browse the website in order to display the CVE list ####
     open_NIST(browser)
 
-### Create the CSV file to save the results
-    f = csv.writer(open('vuln_list.csv', 'w'))
-    f.writerow(['ID', 'Description', 'Impact', 'References', 'CWE'])
+    list_cve = CVE_list()
 
-### Browse the webpage of each CVE ###
     open_CVE(browser)
+
     browser.quit()
 
+# Create the files #
+    list_cve.to_JSON()
+    #list_cve.to_CSV()
+
+
 ### FINISH ###
-    print("\n Your CSV has just been successfully created! :)")
+    print("\n Your file has just been successfully created! :)")
 
 
 
