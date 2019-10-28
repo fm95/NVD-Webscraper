@@ -201,7 +201,7 @@ if __name__ == '__main__':
 
 # Create the files #
     list_cve.to_JSON()
-    #list_cve.to_CSV()
+    list_cve.to_CSV()
 
 
 ### FINISH ###
